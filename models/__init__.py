@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 from models.GCN import GCNNet, GCNNet_NC
 from models.GAT import GATNet, GATNet_NC
 from models.GIN import GINNet, GINNet_NC
@@ -31,6 +32,7 @@ def get_model_NC(input_dim, output_dim, model_args):
 class GnnBase(nn.Module):
     def __init__(self):
         super(GnnBase, self).__init__()
+        self.device = torch.device('cuda')
 
     def forward(self, data):
         data = data.to(self.device)

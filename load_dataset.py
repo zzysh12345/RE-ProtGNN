@@ -337,7 +337,7 @@ def load_SeniGraph(dataset_dir, dataset_name):
     return dataset
 
 
-def get_dataloader(dataset, batch_size, random_split_flag=True, data_split_ratio=None, seed=5):
+def get_dataloader(dataset, batch_size, random_split_flag=True, data_split_ratio=None, seed=5, fold=0):
     """
     Args:
         dataset:
@@ -349,26 +349,37 @@ def get_dataloader(dataset, batch_size, random_split_flag=True, data_split_ratio
         a dictionary of training, validation, and testing dataLoader
     """
 
-    if not random_split_flag and hasattr(dataset, 'supplement'):
-        assert 'split_indices' in dataset.supplement.keys(), "split idx"
-        split_indices = dataset.supplement['split_indices']
-        train_indices = torch.where(split_indices == 0)[0].numpy().tolist()
-        dev_indices = torch.where(split_indices == 1)[0].numpy().tolist()
-        test_indices = torch.where(split_indices == 2)[0].numpy().tolist()
+    # if not random_split_flag and hasattr(dataset, 'supplement'):
+    #     assert 'split_indices' in dataset.supplement.keys(), "split idx"
+    #     split_indices = dataset.supplement['split_indices']
+    #     train_indices = torch.where(split_indices == 0)[0].numpy().tolist()
+    #     dev_indices = torch.where(split_indices == 1)[0].numpy().tolist()
+    #     test_indices = torch.where(split_indices == 2)[0].numpy().tolist()
+    #
+    #     train = Subset(dataset, train_indices)
+    #     eval = Subset(dataset, dev_indices)
+    #     test = Subset(dataset, test_indices)
+    # else:
+    #     num_train = int(data_split_ratio[0] * len(dataset))
+    #     num_eval = int(data_split_ratio[1] * len(dataset))
+    #     num_test = len(dataset) - num_train - num_eval
+    #
+    #     train, eval, test = random_split(dataset, lengths=[num_train, num_eval, num_test],
+    #                                      generator=torch.Generator().manual_seed(seed))
+    #
+    # dataloader = dict()
+    # dataloader['train'] = DataLoader(train, batch_size=batch_size, shuffle=True)
+    # dataloader['eval'] = DataLoader(eval, batch_size=batch_size, shuffle=False)
+    # dataloader['test'] = DataLoader(test, batch_size=batch_size, shuffle=False)
 
-        train = Subset(dataset, train_indices)
-        eval = Subset(dataset, dev_indices)
-        test = Subset(dataset, test_indices)
-    else:
-        num_train = int(data_split_ratio[0] * len(dataset))
-        num_eval = int(data_split_ratio[1] * len(dataset))
-        num_test = len(dataset) - num_train - num_eval
+    train = dataset.data_raw[dataset.train_masks[fold]]
+    val = dataset.data_raw[dataset.val_masks[fold]]
+    test = dataset.data_raw[dataset.test_masks[fold]]
 
-        train, eval, test = random_split(dataset, lengths=[num_train, num_eval, num_test],
-                                         generator=torch.Generator().manual_seed(seed))
 
     dataloader = dict()
     dataloader['train'] = DataLoader(train, batch_size=batch_size, shuffle=True)
-    dataloader['eval'] = DataLoader(eval, batch_size=batch_size, shuffle=False)
+    dataloader['eval'] = DataLoader(val, batch_size=batch_size, shuffle=False)
     dataloader['test'] = DataLoader(test, batch_size=batch_size, shuffle=False)
+
     return dataloader

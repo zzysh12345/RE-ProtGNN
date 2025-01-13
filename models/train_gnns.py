@@ -1,5 +1,7 @@
 import os
 import argparse
+import time
+
 import torch
 import torch.nn.functional as F
 import shutil
@@ -8,11 +10,13 @@ import torch.nn as nn
 from torch.optim import Adam
 from torch_geometric.data import Data, Batch
 from torch_geometric.nn import MessagePassing
-from models import GnnNets, GnnNets_NC
+from model import GnnNets, GnnNets_NC
 from load_dataset import get_dataset, get_dataloader
 from Configures import data_args, train_args, model_args
 from my_mcts import mcts
 from tqdm import tqdm
+from opengsl.data.dataset import Dataset
+import time
 
 
 def warm_only(model):
@@ -104,22 +108,24 @@ elayers.to(model_args.device)
 
 
 # train for graph classification
-def train_GC(clst, sep):
+def train_GC(clst, sep, fold=0):
     # attention the multi-task here
     print(clst)
     print(sep)
     print('start loading data====================')
-    dataset = get_dataset(data_args.dataset_dir, data_args.dataset_name, task=data_args.task)
-    input_dim = dataset.num_node_features
+    # dataset = get_dataset(data_args.dataset_dir, data_args.dataset_name, task=data_args.task)
+    dataset_opengsl = Dataset(data_args.dataset_name, path='./datasets', split='random', cv=10)
+    dataset = dataset_opengsl.data_raw
+
+    input_dim = dataset.num_features
     output_dim = int(dataset.num_classes)
-    dataloader = get_dataloader(dataset, train_args.batch_size, data_split_ratio=data_args.data_split_ratio)
+    dataloader = get_dataloader(dataset_opengsl, train_args.batch_size, data_split_ratio=data_args.data_split_ratio, fold=fold)
 
     print('start training model==================')
-    gnnNets = GnnNets(input_dim, output_dim, model_args)
+    gnnNets = GnnNets(input_dim, output_dim, model_args).cuda()
     ckpt_dir = f"./checkpoint/{data_args.dataset_name}/"
     #checkpoint = torch.load(os.path.join(ckpt_dir, f'{model_args.model_name}_best.pth'))
     #gnnNets.update_state_dict(checkpoint['net'])
-    gnnNets.to_device()
     criterion = nn.CrossEntropyLoss()
     optimizer = Adam(gnnNets.parameters(), lr=train_args.learning_rate, weight_decay=train_args.weight_decay)
 
@@ -143,13 +149,17 @@ def train_GC(clst, sep):
         os.mkdir(os.path.join('checkpoint', f"{data_args.dataset_name}"))
 
     early_stop_count = 0
-    data_indices = dataloader['train'].dataset.indices
+    # data_indices = dataloader['train'].dataset.indices
+    data_indices = dataset_opengsl.train_masks[fold]
+    last_time = time.time()
     for epoch in range(train_args.max_epochs):
+        print(time.time()-last_time)
+        last_time = time.time()
         acc = []
         loss_list = []
         ld_loss_list = []
         # Prototype projection
-        if epoch >= train_args.proj_epochs and epoch % 10 == 0:
+        if epoch >= train_args.proj_epochs and epoch % 100 == 0:
             gnnNets.eval()
             for i in range(output_dim * model_args.num_prototypes_per_class):
                 count = 0
@@ -175,6 +185,8 @@ def train_GC(clst, sep):
             joint(gnnNets)
         for batch in dataloader['train']:
             logits, probs, _, _, min_distances = gnnNets(batch)
+            # print(logits.shape)
+            # print(batch.y.shape)
             loss = criterion(logits, batch.y)
             #cluster loss
             prototypes_of_correct_class = torch.t(gnnNets.model.prototype_class_identity[:, batch.y].bool()).to(model_args.device)
@@ -211,14 +223,14 @@ def train_GC(clst, sep):
             acc.append(prediction.eq(batch.y).cpu().numpy())
 
         # report train msg
-        append_record("Epoch {:2d}, loss: {:.3f}, acc: {:.3f}".format(epoch, np.average(loss_list), np.concatenate(acc, axis=0).mean()))
+        # append_record("Epoch {:2d}, loss: {:.3f}, acc: {:.3f}".format(epoch, np.average(loss_list), np.concatenate(acc, axis=0).mean()))
         print(f"Train Epoch:{epoch}  |Loss: {np.average(loss_list):.3f} | Ld: {np.average(ld_loss_list):.3f} | "
               f"Acc: {np.concatenate(acc, axis=0).mean():.3f}")
 
         # report eval msg
         eval_state = evaluate_GC(dataloader['eval'], gnnNets, criterion)
         print(f"Eval Epoch: {epoch} | Loss: {eval_state['loss']:.3f} | Acc: {eval_state['acc']:.3f}")
-        append_record("Eval epoch {:2d}, loss: {:.3f}, acc: {:.3f}".format(epoch, eval_state['loss'], eval_state['acc']))
+        # append_record("Eval epoch {:2d}, loss: {:.3f}, acc: {:.3f}".format(epoch, eval_state['loss'], eval_state['acc']))
 
         # only save the best model
         is_best = (eval_state['acc'] > best_acc)
@@ -243,8 +255,8 @@ def train_GC(clst, sep):
     gnnNets.update_state_dict(checkpoint['net'])
     test_state, _, _ = test_GC(dataloader['test'], gnnNets, criterion)
     print(f"Test: | Loss: {test_state['loss']:.3f} | Acc: {test_state['acc']:.3f}")
-    append_record("loss: {:.3f}, acc: {:.3f}".format(test_state['loss'], test_state['acc']))
-
+    # append_record("loss: {:.3f}, acc: {:.3f}".format(test_state['loss'], test_state['acc']))
+    return test_state['acc']
 
 
 def evaluate_GC(eval_dataloader, gnnNets, criterion):
@@ -460,4 +472,8 @@ if __name__ == '__main__':
     parser.add_argument('--sep', type=float, default=0.0,
                         help='separation')
     args = parser.parse_args()
-    train_GC(args.clst, args.sep)
+    accs = []
+    for i in range(10):
+        accs.append(train_GC(args.clst, args.sep, i))
+    print(np.mean(accs))
+    print(np.std(accs))

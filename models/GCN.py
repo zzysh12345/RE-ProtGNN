@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn.conv import GCNConv
 from torch_geometric.nn.glob import global_mean_pool, global_add_pool, global_max_pool
-from torch_geometric.nn.pool.topk_pool import topk
+from torch_geometric.nn.pool.select.topk import topk
 
 
 def get_readout_layers(readout):
@@ -28,7 +28,7 @@ class GCNNet(nn.Module):
         self.latent_dim = model_args.latent_dim
         self.mlp_hidden = model_args.mlp_hidden
         self.emb_normlize = model_args.emb_normlize
-        self.device = torch.device('cuda:'+str(model_args.device))
+        self.device = torch.device('cuda')
         self.num_gnn_layers = len(self.latent_dim)
         self.num_mlp_layers = len(self.mlp_hidden) + 1
         self.dense_dim = self.latent_dim[-1]
@@ -67,7 +67,7 @@ class GCNNet(nn.Module):
         assert (self.num_prototypes % output_dim == 0)
         # a onehot indication matrix for each prototype's class identity
         self.prototype_class_identity = torch.zeros(self.num_prototypes,
-                                                    output_dim)
+                                                    output_dim).to('cuda')
         for j in range(self.num_prototypes):
             self.prototype_class_identity[j, j // model_args.num_prototypes_per_class] = 1
         # initialize the last layer

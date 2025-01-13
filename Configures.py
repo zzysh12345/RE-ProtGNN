@@ -6,7 +6,7 @@ from typing import List
 class DataParser():
     def __init__(self):
         super().__init__()
-        self.dataset_name = 'bbbp'
+        self.dataset_name = 'IMDB-BINARY'
         self.dataset_dir = './datasets'
         self.task = None
         self.random_split: bool = True
@@ -27,7 +27,7 @@ class GATParser():# hyper-parameter for gat model
 class ModelParser():
     def __init__(self):
         super().__init__()
-        self.device: int = 0
+        self.device: int = torch.device('cuda')
         self.model_name: str = 'gcn'
         self.checkpoint: str = './checkpoint'
         self.concate: bool = False                     # whether to concate the gnn features before mlp
@@ -49,10 +49,7 @@ class ModelParser():
 
     def process_args(self) -> None:
         # self.device = torch.device('cpu')
-        if torch.cuda.is_available():
-            self.device = torch.device('cuda', self.device_id)
-        else:
-            pass
+        self.device = torch.device('cuda')
 
 
 class MCTSParser(DataParser, ModelParser):
@@ -84,7 +81,7 @@ class TrainParser():
         self.learning_rate = 0.005
         self.batch_size = 24
         self.weight_decay = 0.0
-        self.max_epochs = 800
+        self.max_epochs = 400
         self.save_epoch = 10
         self.early_stopping = 80
         self.last_layer_optimizer_lr = 1e-4            # the learning rate of the last layer
